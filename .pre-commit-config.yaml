@@ -1,0 +1,38 @@
+# Install once per clone:  uv run pre-commit install
+# Fast checks run on every commit; the slower ones run on push.
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff lint
+        entry: uv run ruff check
+        language: system
+        types: [python]
+        require_serial: true
+
+      - id: ruff-format
+        name: ruff format (check)
+        entry: uv run ruff format --check
+        language: system
+        types: [python]
+        require_serial: true
+
+      - id: mypy
+        name: mypy (strict)
+        entry: uv run mypy app
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      # Includes tests/unit/test_route_coverage.py: every route must have an integration test.
+      - id: unit-tests
+        name: unit tests (+ every API has an integration test)
+        entry: uv run pytest tests/unit -q
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
