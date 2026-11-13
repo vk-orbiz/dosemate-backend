@@ -88,7 +88,7 @@ tests/
 ```
 
 The rules (enforced by `tests/unit/test_architecture.py` and reviewed by humans) are listed in
-[CONTRIBUTING.md](CONTRIBUTING.md#architecture-rules) and in full in [agent.md](agent.md).
+[agent.md](agent.md).
 
 ## Development commands
 

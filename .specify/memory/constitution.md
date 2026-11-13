@@ -1,50 +1,27 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# DoseMate Backend Constitution
 
-## Core Principles
+Details, file layout and examples: `agent.md` (single source of truth). Plans are checked against these principles.
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+## Principles
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+1. **Layered architecture (non-negotiable).** `transport -> service -> service/protocols <- repo -> storage`; `core` and `models` import nothing from the rest of `app`. No layer imports one it must not (enforced by `tests/unit/test_architecture.py`).
+2. **Consumer-defined Protocols.** Ports are `typing.Protocol`s in `service/protocols.py` and `transport/http/protocols.py`; implementations satisfy them structurally.
+3. **Domain errors below transport.** Repos and services raise `DomainError` subclasses; only `transport/http/error_map.py` maps them to HTTP. No `HTTPException`, no `try/except` in handlers.
+4. **One error envelope.** Every non-2xx is `{"message", "code", "data"}`; unknown errors are logged and returned as 500 `internal_error`; no stack traces or driver messages.
+5. **SQL only in `repo/`.** Parameterised, table names from `tables.py`, models returned (never entities or records), driver errors translated. Schema changes append a migration to `_MIGRATIONS`; never edit an applied one.
+6. **Composition root.** Everything is built in `main.py`, stored on `app.state`, exposed through `deps.py`. No singletons. Only `core/config.py` reads the environment (`DOSEMATE_` prefix).
+7. **Thin transport.** DTOs for bodies only, validators convert DTO to model (`InvalidInput`), handlers call one service method, routes live under `/v1`. Protected routes use `CurrentUserId` and scope every query by the owner (other users' rows are 404).
+8. **Async, typed, tested.** All I/O async (blocking work via `asyncio.to_thread`), `mypy --strict`, ruff. A unit test per service method and error path, an integration test per endpoint.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+## Constraints and workflow
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
-
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
-
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
-
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
-
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
-
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+- Stack: Python 3.12+, FastAPI, pydantic v2, asyncpg (raw SQL), PyJWT, PostgreSQL, uv. New dependencies need a reason in the PR.
+- Security: passwords only as salted PBKDF2 hashes; unknown email and wrong password are indistinguishable; secrets never committed.
+- CRUD resources are generated with `scripts/make_api.py` (skill `add-endpoint`); schema changes follow skill `add-migration`.
+- Branch `<type>/<number>-<name>` from `main`, Conventional Commits, one logical change per commit. Before pushing: ruff, mypy, pytest (CI also runs `tests/smoke`).
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This file supersedes other practice; `agent.md` and `CONTRIBUTING.md` must stay consistent with it. Amend via PR (update the docs and, for a changed rule, `test_architecture.py`); every review verifies compliance and justifies any deviation.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.1.0 | **Ratified**: 2026-11-13 | **Last Amended**: 2026-11-13

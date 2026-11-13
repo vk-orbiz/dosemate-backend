@@ -40,35 +40,21 @@ and fails the push unless some test under `tests/integration/` calls each path a
 transport  ->  service  ->  (service/protocols)  <-  repo  ->  storage
 ```
 
-1. Dependencies point inward only. `core` and `models` import nothing from the rest of `app`.
-2. `service` never imports `repo`, `storage` or `transport`. Handlers use the Protocols in
-   `transport/http/protocols.py`. Protocols are defined by the consumer and satisfied structurally.
-3. Repos return domain models, never entities or raw records. Entities stay inside `repo/`.
-4. Repos and services raise domain errors from `core/errors.py`. Only `transport/http/error_map.py` maps them to HTTP.
-   Handlers never contain `if err == X` chains.
-5. No global singletons. Everything is built in `main.py` and stored on `app.state`; `deps.py` exposes it via `Depends`.
-6. Every error response is `{"message", "code", "data"}`.
-7. SQL lives only in `repo/`, with table names from `storage/postgres/tables.py`. Multi-table writes use one transaction.
-8. Routes are versioned under `/v1`.
-9. Only `core/config.py` reads the environment.
-
-`tests/unit/test_architecture.py` checks the import rules and rule 9 automatically.
+The rules (numbered 1 to 9, cited in code comments) and the per-layer conventions live in
+[agent.md](agent.md); that is the single source of truth. `tests/unit/test_architecture.py` enforces the import
+rules and rule 9, and `tests/unit/test_route_coverage.py` requires an integration test per endpoint.
 
 ## 4. Adding an endpoint
 
-Work from the inside out:
+For a user-owned CRUD resource, generate it:
 
-1. **models/**: add or extend the domain objects.
-2. **core/errors.py**: add domain errors if needed, then map them in `transport/http/error_map.py`.
-3. **service/protocols.py**: declare what the service needs from the repo. Implement the logic in `service/`.
-4. **repo/** (plus `repo/entities/`): write the SQL and the entity-to-model mapping. New tables go in
-   `storage/postgres/tables.py` and a migration in `storage/postgres/db.py`.
-5. **transport/http/**: add `dto/`, `validators/` (DTO to model, semantic checks), the method on a handler in `handlers/`,
-   the Protocol it needs in `protocols.py`, and the path in `routes/`.
-6. **main.py**: construct and wire any new object.
-7. **Tests**: unit tests for the service with fakes, and an integration test per endpoint.
+```bash
+uv run python scripts/make_api.py <name> --fields "title:str done:bool" --dry-run   # preview
+uv run python scripts/make_api.py <name> --fields "title:str done:bool" --wire      # generate + wire
+```
 
-Then run `uv run ruff check . && uv run mypy app && uv run pytest`.
+Anything else: follow the inside-out checklist in [agent.md](agent.md) (or the `add-endpoint` and `add-migration`
+skills). Then run `uv run ruff check . && uv run ruff format --check . && uv run mypy app && uv run pytest`.
 
 ## 5. Working with coding agents
 
@@ -108,7 +94,7 @@ Use it from your agent, in this order, for any non-trivial feature:
 
 | Command | Purpose |
 |---|---|
-| `/speckit-constitution` | Once per project: record principles. Seed it with the rules in section 3 and [agent.md](agent.md). |
+| `/speckit-constitution` | Amend the project principles (already filled in: [.specify/memory/constitution.md](.specify/memory/constitution.md)). Keep it consistent with section 3 and [agent.md](agent.md). |
 | `/speckit-specify` | Describe what to build and why |
 | `/speckit-clarify` | Optional: resolve ambiguities before planning |
 | `/speckit-plan` | Choose the technical approach (must respect the layer rules) |
