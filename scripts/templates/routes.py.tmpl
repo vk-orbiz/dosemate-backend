@@ -1,0 +1,62 @@
+"""HTTP routes for {{plural}}. All require a bearer token; each user only sees their own."""
+
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Query
+
+from app.transport.http.deps import CurrentUserId, {{Name}}HandlerDep
+from app.transport.http.dto.common import ErrorResponse
+from app.transport.http.dto.{{name}} import {{Name}}Request, {{Name}}Response
+
+router = APIRouter(
+    prefix="/v1/{{plural}}",
+    tags=["{{plural}}"],
+    responses={401: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
+)
+
+
+@router.post("", status_code=201, response_model={{Name}}Response)
+async def create_{{name}}(
+    body: {{Name}}Request, user_id: CurrentUserId, handler: {{Name}}HandlerDep
+) -> {{Name}}Response:
+    return await handler.create(user_id, body)
+
+
+@router.get("", response_model=list[{{Name}}Response])
+async def list_{{plural}}(
+    user_id: CurrentUserId,
+    handler: {{Name}}HandlerDep,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[{{Name}}Response]:
+    return await handler.list_mine(user_id, limit=limit, offset=offset)
+
+
+@router.get(
+    "/{{{name}}_id}",
+    response_model={{Name}}Response,
+    responses={404: {"model": ErrorResponse}},
+)
+async def get_{{name}}(
+    {{name}}_id: UUID, user_id: CurrentUserId, handler: {{Name}}HandlerDep
+) -> {{Name}}Response:
+    return await handler.get(user_id, {{name}}_id)
+
+
+@router.put(
+    "/{{{name}}_id}",
+    response_model={{Name}}Response,
+    responses={404: {"model": ErrorResponse}},
+)
+async def update_{{name}}(
+    {{name}}_id: UUID, body: {{Name}}Request, user_id: CurrentUserId, handler: {{Name}}HandlerDep
+) -> {{Name}}Response:
+    return await handler.update(user_id, {{name}}_id, body)
+
+
+@router.delete("/{{{name}}_id}", status_code=204, responses={404: {"model": ErrorResponse}})
+async def delete_{{name}}(
+    {{name}}_id: UUID, user_id: CurrentUserId, handler: {{Name}}HandlerDep
+) -> None:
+    await handler.delete(user_id, {{name}}_id)

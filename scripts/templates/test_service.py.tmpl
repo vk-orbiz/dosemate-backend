@@ -1,0 +1,128 @@
+"""{{Name}}Service against an in-memory fake repo (no database, no HTTP)."""
+
+from dataclasses import replace
+from datetime import datetime
+from uuid import UUID, uuid4
+
+import pytest
+
+from app.core.errors import {{Name}}NotFound
+from app.models.{{name}} import {{Name}}, {{Name}}Draft
+from app.service.{{name}} import {{Name}}Service
+
+
+class Fake{{Name}}Repo:
+    def __init__(self) -> None:
+        self.items: dict[UUID, {{Name}}] = {}
+
+    async def create(self, {{name}}: {{Name}}) -> None:
+        self.items[{{name}}.id] = {{name}}
+
+    async def list_by_user(self, user_id: UUID, *, limit: int, offset: int) -> list[{{Name}}]:
+        mine = [i for i in self.items.values() if i.user_id == user_id]
+        return mine[offset : offset + limit]
+
+    async def get(self, user_id: UUID, {{name}}_id: UUID) -> {{Name}}:
+        item = self.items.get({{name}}_id)
+        if item is None or item.user_id != user_id:
+            raise {{Name}}NotFound()
+        return item
+
+    async def update(
+        self, user_id: UUID, {{name}}_id: UUID, draft: {{Name}}Draft, updated_at: datetime
+    ) -> {{Name}}:
+        item = await self.get(user_id, {{name}}_id)
+        updated = replace(
+            item,
+            {{draft_to_model_kwargs}}
+            updated_at=updated_at,
+        )
+        self.items[{{name}}_id] = updated
+        return updated
+
+    async def delete(self, user_id: UUID, {{name}}_id: UUID) -> None:
+        await self.get(user_id, {{name}}_id)
+        del self.items[{{name}}_id]
+
+
+DRAFT = {{Name}}Draft(
+    {{sample_kwargs}}
+)
+CHANGED = {{Name}}Draft(
+    {{updated_kwargs}}
+)
+OWNER = uuid4()
+OTHER = uuid4()
+
+
+@pytest.fixture
+def service() -> {{Name}}Service:
+    return {{Name}}Service(Fake{{Name}}Repo())
+
+
+async def test_create_sets_owner_and_timestamps(service: {{Name}}Service) -> None:
+    item = await service.create(OWNER, DRAFT)
+
+    assert item.user_id == OWNER
+    assert item.{{first_field}} == DRAFT.{{first_field}}
+    assert item.created_at == item.updated_at
+
+
+async def test_list_returns_only_own_items(service: {{Name}}Service) -> None:
+    mine = await service.create(OWNER, DRAFT)
+    await service.create(OTHER, DRAFT)
+
+    assert await service.list_by_user(OWNER, limit=10, offset=0) == [mine]
+
+
+async def test_list_pagination(service: {{Name}}Service) -> None:
+    for _ in range(3):
+        await service.create(OWNER, DRAFT)
+
+    assert len(await service.list_by_user(OWNER, limit=2, offset=0)) == 2
+    assert len(await service.list_by_user(OWNER, limit=2, offset=2)) == 1
+
+
+async def test_get_other_users_item_is_not_found(service: {{Name}}Service) -> None:
+    item = await service.create(OWNER, DRAFT)
+
+    assert await service.get(OWNER, item.id) == item
+    with pytest.raises({{Name}}NotFound):
+        await service.get(OTHER, item.id)
+
+
+async def test_get_unknown_id_is_not_found(service: {{Name}}Service) -> None:
+    with pytest.raises({{Name}}NotFound):
+        await service.get(OWNER, uuid4())
+
+
+async def test_update_changes_fields(service: {{Name}}Service) -> None:
+    item = await service.create(OWNER, DRAFT)
+
+    updated = await service.update(OWNER, item.id, CHANGED)
+
+    assert updated.id == item.id
+    assert updated.{{first_field}} == CHANGED.{{first_field}}
+    assert updated.created_at == item.created_at
+    assert updated.updated_at >= item.updated_at
+
+
+async def test_update_other_users_item_is_not_found(service: {{Name}}Service) -> None:
+    item = await service.create(OWNER, DRAFT)
+    with pytest.raises({{Name}}NotFound):
+        await service.update(OTHER, item.id, CHANGED)
+
+
+async def test_delete_removes_item(service: {{Name}}Service) -> None:
+    item = await service.create(OWNER, DRAFT)
+
+    await service.delete(OWNER, item.id)
+
+    with pytest.raises({{Name}}NotFound):
+        await service.get(OWNER, item.id)
+
+
+async def test_delete_other_users_item_is_not_found(service: {{Name}}Service) -> None:
+    item = await service.create(OWNER, DRAFT)
+    with pytest.raises({{Name}}NotFound):
+        await service.delete(OTHER, item.id)

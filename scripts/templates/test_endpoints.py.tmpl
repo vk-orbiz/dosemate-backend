@@ -1,0 +1,152 @@
+"""One+ test per endpoint, through the real app against a real Postgres."""
+
+from typing import Any
+from uuid import uuid4
+
+import httpx
+
+PASSWORD = "correct horse battery"
+PAYLOAD: dict[str, Any] = {
+    {{payload_sample}}
+}
+CHANGED: dict[str, Any] = {
+    {{payload_updated}}
+}
+
+
+async def auth_headers(
+    client: httpx.AsyncClient, email: str = "alice@example.com"
+) -> dict[str, str]:
+    credentials = {"email": email, "password": PASSWORD}
+    await client.post("/v1/auth/signup", json=credentials)
+    resp = await client.post("/v1/auth/login", json=credentials)
+    return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+
+async def create_one(client: httpx.AsyncClient, headers: dict[str, str]) -> dict[str, Any]:
+    resp = await client.post("/v1/{{plural}}", json=PAYLOAD, headers=headers)
+    assert resp.status_code == 201
+    data: dict[str, Any] = resp.json()
+    return data
+
+
+async def test_create_{{name}}(client: httpx.AsyncClient) -> None:
+    headers = await auth_headers(client)
+
+    resp = await client.post("/v1/{{plural}}", json=PAYLOAD, headers=headers)
+
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["id"]
+    assert data["{{first_field}}"] == PAYLOAD["{{first_field}}"]
+    assert "user_id" not in data
+
+
+async def test_create_{{name}}_invalid_input(client: httpx.AsyncClient) -> None:
+    headers = await auth_headers(client)
+
+    resp = await client.post(
+        "/v1/{{plural}}", json={**PAYLOAD, "unexpected": 1}, headers=headers
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "invalid_input"
+
+
+async def test_{{plural}}_require_a_token(client: httpx.AsyncClient) -> None:
+    for resp in (
+        await client.post("/v1/{{plural}}", json=PAYLOAD),
+        await client.get("/v1/{{plural}}"),
+    ):
+        assert resp.status_code == 401
+        assert resp.json()["code"] == "invalid_token"
+
+
+async def test_list_{{plural}}_only_returns_own(client: httpx.AsyncClient) -> None:
+    alice = await auth_headers(client, "alice@example.com")
+    bob = await auth_headers(client, "bob@example.com")
+    created = await create_one(client, alice)
+
+    mine = await client.get("/v1/{{plural}}", headers=alice)
+    theirs = await client.get("/v1/{{plural}}", headers=bob)
+
+    assert [i["id"] for i in mine.json()] == [created["id"]]
+    assert theirs.json() == []
+
+
+async def test_list_{{plural}}_validates_paging(client: httpx.AsyncClient) -> None:
+    headers = await auth_headers(client)
+
+    resp = await client.get("/v1/{{plural}}?limit=0", headers=headers)
+
+    assert resp.status_code == 422
+
+
+async def test_get_{{name}}(client: httpx.AsyncClient) -> None:
+    headers = await auth_headers(client)
+    item_id = (await create_one(client, headers))["id"]
+
+    resp = await client.get(f"/v1/{{plural}}/{item_id}", headers=headers)
+
+    assert resp.status_code == 200
+    assert resp.json()["id"] == item_id
+
+
+async def test_get_{{name}}_of_another_user_is_404(client: httpx.AsyncClient) -> None:
+    alice = await auth_headers(client, "alice@example.com")
+    bob = await auth_headers(client, "bob@example.com")
+    item_id = (await create_one(client, alice))["id"]
+
+    resp = await client.get(f"/v1/{{plural}}/{item_id}", headers=bob)
+
+    assert resp.status_code == 404
+    assert resp.json()["code"] == "not_found"
+
+
+async def test_get_unknown_{{name}}_is_404(client: httpx.AsyncClient) -> None:
+    headers = await auth_headers(client)
+
+    resp = await client.get(f"/v1/{{plural}}/{uuid4()}", headers=headers)
+
+    assert resp.status_code == 404
+
+
+async def test_update_{{name}}(client: httpx.AsyncClient) -> None:
+    headers = await auth_headers(client)
+    item_id = (await create_one(client, headers))["id"]
+
+    resp = await client.put(f"/v1/{{plural}}/{item_id}", json=CHANGED, headers=headers)
+
+    assert resp.status_code == 200
+    assert resp.json()["{{first_field}}"] == CHANGED["{{first_field}}"]
+
+
+async def test_update_{{name}}_of_another_user_is_404(client: httpx.AsyncClient) -> None:
+    alice = await auth_headers(client, "alice@example.com")
+    bob = await auth_headers(client, "bob@example.com")
+    item_id = (await create_one(client, alice))["id"]
+
+    resp = await client.put(f"/v1/{{plural}}/{item_id}", json=CHANGED, headers=bob)
+
+    assert resp.status_code == 404
+
+
+async def test_delete_{{name}}(client: httpx.AsyncClient) -> None:
+    headers = await auth_headers(client)
+    item_id = (await create_one(client, headers))["id"]
+
+    resp = await client.delete(f"/v1/{{plural}}/{item_id}", headers=headers)
+
+    assert resp.status_code == 204
+    gone = await client.get(f"/v1/{{plural}}/{item_id}", headers=headers)
+    assert gone.status_code == 404
+
+
+async def test_delete_{{name}}_of_another_user_is_404(client: httpx.AsyncClient) -> None:
+    alice = await auth_headers(client, "alice@example.com")
+    bob = await auth_headers(client, "bob@example.com")
+    item_id = (await create_one(client, alice))["id"]
+
+    resp = await client.delete(f"/v1/{{plural}}/{item_id}", headers=bob)
+
+    assert resp.status_code == 404
