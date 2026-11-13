@@ -128,6 +128,22 @@ Shortcut for a user-owned CRUD resource: `uv run python scripts/make_api.py todo
 10. Tests: unit test for service with fake repo; integration test for each endpoint (`tests/unit/test_route_coverage.py` fails the push if an endpoint has none).
 11. `ruff check`, `mypy app`, `pytest` all green.
 
+## Current APIs only (banned patterns)
+Libraries move faster than model training data. Use the current API; the toolchain enforces this (`mypy` `deprecated` error code, `pytest` `filterwarnings = ["error"]`, ruff `UP` and `DTZ`). Versions in use: FastAPI 0.16x, Pydantic 2.x, Starlette 1.x, asyncpg 0.3x.
+
+| Don't | Do |
+|---|---|
+| `@app.on_event("startup" / "shutdown")` | `lifespan=` with `@asynccontextmanager` (see `main.py`; that decorator is current, not deprecated) |
+| `model.dict()`, `.json()`, `.parse_obj()`, `.copy()` | `model_dump()`, `model_dump_json()`, `model_validate()`, `model_copy()` |
+| `class Config:` inside a pydantic model | `model_config = ConfigDict(...)` |
+| `@validator`, `@root_validator` | `@field_validator`, `@model_validator` |
+| `datetime.utcnow()`, `datetime.utcfromtimestamp()`, naive datetimes | `datetime.now(UTC)` |
+| `typing.List`, `Dict`, `Optional[X]`, `Union[X, Y]` | `list[...]`, `dict[...]`, `X \| None`, `X \| Y` |
+| `asyncio.get_event_loop()` | `asyncio.get_running_loop()`; `asyncio.run()` at the entry point |
+| `Depends()` default values in signatures | `Annotated[T, Depends(...)]` (see `deps.py`) |
+
+If a library warns about deprecation, fix the call; do not silence the warning. When unsure about an API, check the library's current docs instead of recalling it.
+
 ## Do / Don't
 - Do keep handlers under ~20 lines per method; push logic down.
 - Do add a unit test for every new service method and a failing-path test for every new error.

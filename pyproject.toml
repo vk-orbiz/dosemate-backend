@@ -34,16 +34,20 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "ASYNC", "SIM", "RUF"]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "SIM", "RUF", "DTZ"]
 
 [tool.mypy]
 strict = true
 python_version = "3.12"
 plugins = ["pydantic.mypy"]
+# Fail on use of APIs the libraries mark @deprecated (e.g. app.on_event, BaseModel.dict()).
+enable_error_code = ["deprecated"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+# Any warning (including DeprecationWarning) is a test failure; add targeted ignores if needed.
+filterwarnings = ["error"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
