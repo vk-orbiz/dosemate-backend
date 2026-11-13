@@ -3,7 +3,6 @@
 Knows nothing about services or repos; `main.py` attaches those to `app.state`.
 """
 
-from dataclasses import asdict
 from http import HTTPStatus
 
 from fastapi import FastAPI, Request
@@ -23,7 +22,7 @@ from app.transport.http.routes import auth, general
 
 
 def _json(status: int, body: ErrorBody) -> JSONResponse:
-    return JSONResponse(status_code=status, content=asdict(body))
+    return JSONResponse(status_code=status, content=body.model_dump())
 
 
 async def _domain_error_handler(request: Request, exc: Exception) -> JSONResponse:

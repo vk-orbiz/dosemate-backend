@@ -6,7 +6,7 @@ from uuid import UUID
 import pytest
 
 from app.core.errors import EmailAlreadyExists, InvalidCredentials, InvalidToken, UserNotFound
-from app.models.user import Credentials, Signup, User
+from app.models.user import User
 from app.service.auth import AuthService, verify_password
 from app.service.jwt import JWTService
 
@@ -43,11 +43,12 @@ def service(repo: FakeUserRepo, jwt_service: JWTService) -> AuthService:
     return AuthService(repo, jwt_service, hash_iterations=1_000)  # fast for tests
 
 
-SIGNUP = Signup("alice@example.com", "correct horse battery")
+EMAIL = "alice@example.com"
+PASSWORD = "correct horse battery"
 
 
 async def test_signup_stores_hash_not_plaintext(service: AuthService, repo: FakeUserRepo) -> None:
-    user = await service.signup(SIGNUP)
+    user = await service.signup(EMAIL, PASSWORD)
 
     assert repo.users["alice@example.com"] == user
     assert "correct horse battery" not in user.password_hash
@@ -57,21 +58,21 @@ async def test_signup_stores_hash_not_plaintext(service: AuthService, repo: Fake
 
 
 async def test_same_password_gets_different_hashes(service: AuthService) -> None:
-    a = await service.signup(SIGNUP)
-    b = await service.signup(Signup("bob@example.com", SIGNUP.password))
+    a = await service.signup(EMAIL, PASSWORD)
+    b = await service.signup("bob@example.com", PASSWORD)
     assert a.password_hash != b.password_hash
 
 
 async def test_signup_duplicate_email(service: AuthService) -> None:
-    await service.signup(SIGNUP)
+    await service.signup(EMAIL, PASSWORD)
     with pytest.raises(EmailAlreadyExists):
-        await service.signup(SIGNUP)
+        await service.signup(EMAIL, PASSWORD)
 
 
 async def test_login_success(service: AuthService, jwt_service: JWTService) -> None:
-    user = await service.signup(SIGNUP)
+    user = await service.signup(EMAIL, PASSWORD)
 
-    session = await service.login(Credentials(SIGNUP.email, SIGNUP.password))
+    session = await service.login(EMAIL, PASSWORD)
 
     assert session.user_id == user.id
     assert session.expires_in == 60
@@ -79,14 +80,14 @@ async def test_login_success(service: AuthService, jwt_service: JWTService) -> N
 
 
 async def test_login_wrong_password(service: AuthService) -> None:
-    await service.signup(SIGNUP)
+    await service.signup(EMAIL, PASSWORD)
     with pytest.raises(InvalidCredentials):
-        await service.login(Credentials(SIGNUP.email, "nope nope nope"))
+        await service.login(EMAIL, "nope nope nope")
 
 
 async def test_login_unknown_email(service: AuthService) -> None:
     with pytest.raises(InvalidCredentials):
-        await service.login(Credentials("nobody@example.com", SIGNUP.password))
+        await service.login("nobody@example.com", PASSWORD)
 
 
 def test_verify_password_tolerates_malformed_hash() -> None:

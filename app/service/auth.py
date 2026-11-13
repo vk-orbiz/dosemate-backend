@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from app.core.errors import InvalidCredentials, UserNotFound
-from app.models.user import Credentials, Session, Signup, User
+from app.models.user import Session, User
 from app.service.jwt import JWTService
 from app.service.protocols import UserRepository
 
@@ -57,26 +57,26 @@ class AuthService:
         # Verified against when the email is unknown so timing doesn't reveal existence.
         self._dummy_hash = hash_password(os.urandom(16).hex(), hash_iterations)
 
-    async def signup(self, signup: Signup) -> User:
-        """Raises EmailAlreadyExists."""
+    async def signup(self, email: str, password: str) -> User:
+        """`email` must already be normalised (trimmed, lower-case). Raises EmailAlreadyExists."""
         user = User(
             id=uuid4(),
-            email=signup.email,
-            password_hash=await asyncio.to_thread(hash_password, signup.password, self._iterations),
+            email=email,
+            password_hash=await asyncio.to_thread(hash_password, password, self._iterations),
             created_at=datetime.now(UTC),
         )
         await self._users.create(user)
         return user
 
-    async def login(self, credentials: Credentials) -> Session:
+    async def login(self, email: str, password: str) -> Session:
         """Raises InvalidCredentials for both unknown email and wrong password."""
         try:
-            user = await self._users.get_by_email(credentials.email)
+            user = await self._users.get_by_email(email)
         except UserNotFound:
-            await asyncio.to_thread(verify_password, credentials.password, self._dummy_hash)
+            await asyncio.to_thread(verify_password, password, self._dummy_hash)
             raise InvalidCredentials() from None
 
-        if not await asyncio.to_thread(verify_password, credentials.password, user.password_hash):
+        if not await asyncio.to_thread(verify_password, password, user.password_hash):
             raise InvalidCredentials()
 
         return Session(

@@ -42,19 +42,53 @@ transport  ->  service  ->  (service/protocols)  <-  repo  ->  storage
 
 The rules (numbered 1 to 9, cited in code comments) and the per-layer conventions live in
 [agent.md](agent.md); that is the single source of truth. `tests/unit/test_architecture.py` enforces the import
-rules and rule 9, and `tests/unit/test_route_coverage.py` requires an integration test per endpoint.
+rules (including which layers may import `sqlalchemy`, `alembic`, `asyncpg` and `fastapi`) and rule 9, and `tests/unit/test_route_coverage.py` requires an integration test per endpoint.
 
 ## 4. Adding an endpoint
 
-For a user-owned CRUD resource, generate it:
+Follow the inside-out checklist in [agent.md](agent.md) (or the `add-endpoint` and `add-migration` skills): domain model,
+ORM row and migration, repo, service, DTOs, route, wiring, tests. Then run
+`uv run ruff check . && uv run ruff format --check . && uv run mypy app && uv run pytest && uv run alembic check`.
+
+### Database migrations
+
+The schema is defined by the ORM rows in `app/storage/postgres/models/`. Migrations are Alembic revisions in
+`app/storage/postgres/migrations/versions/`, generated from the rows and reviewed by hand.
 
 ```bash
-uv run python scripts/make_api.py <name> --fields "title:str done:bool" --dry-run   # preview
-uv run python scripts/make_api.py <name> --fields "title:str done:bool" --wire      # generate + wire
+uv run python -m app.storage.postgres.migrate                                   # apply (alembic upgrade head)
+uv run alembic revision --autogenerate -m "create todos" --rev-id 0002         # create from model changes
+uv run alembic check                                                           # no drift between models and migrations
+uv run alembic downgrade -1                                                    # roll back one (local only)
+uv run alembic upgrade base:head --sql                                         # print SQL for review
 ```
 
-Anything else: follow the inside-out checklist in [agent.md](agent.md) (or the `add-endpoint` and `add-migration`
-skills). Then run `uv run ruff check . && uv run ruff format --check . && uv run mypy app && uv run pytest`.
+- **Review every generated revision**: only your change, convention-named constraints, a correct `downgrade()`, and any
+  backfill or `server_default` a change to a populated table needs. Use the next number as `--rev-id`.
+- **Never edit an applied revision**; fix mistakes with a new one. CI fails if there is more than one head or if the models
+  and migrations drift.
+- **When migrations run**: at app startup in development and test (`DOSEMATE_RUN_MIGRATIONS_ON_STARTUP`, default on); in
+  production set it to `false` and run `python -m app.storage.postgres.migrate` once per release before the new version
+  starts. It takes a Postgres advisory lock, so concurrent runs are safe.
+- **Rolling back a release**: schema changes should be backward compatible with the previous app version (add before you
+  remove). `downgrade` is for development; in production prefer a forward fix.
+
+#### Runbook: first production deploy of the Alembic version (cut-over)
+
+Databases created by the old hand-rolled migrator have a `schema_migrations` table and no `alembic_version`. The migrate
+command recognises this and **stamps** revision `0001` without re-running any DDL (the two schemas are identical; this is
+tested). If the history is anything other than version `1` it refuses and changes nothing.
+
+1. Take a backup: `pg_dump --format=custom "$DATABASE_URL" > before-alembic.dump`.
+2. Set `DOSEMATE_RUN_MIGRATIONS_ON_STARTUP=false` for the new release.
+3. Run the release step once: `python -m app.storage.postgres.migrate`. Expect `adopted legacy migration history
+   revision='0001'` then `database is at head`.
+4. Verify: `SELECT version_num FROM alembic_version;` returns `0001`, and `schema_migrations` still exists.
+5. Start the new version.
+
+Rollback: the cut-over only adds the `alembic_version` table, so the previous app version keeps working against the same
+database (its `schema_migrations` is untouched). `schema_migrations` and the legacy branch in `migrate.py` are removed in a
+later release, once every environment is on Alembic.
 
 ## 5. Working with coding agents
 

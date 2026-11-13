@@ -1,6 +1,6 @@
 # DoseMate Backend
 
-FastAPI + asyncpg (raw SQL) + PostgreSQL, organised as a layered "ports and adapters" architecture.
+FastAPI + SQLAlchemy 2 (async) + Alembic + PostgreSQL, with pydantic validation, organised as a layered "ports and adapters" architecture.
 Currently exposes three endpoints: health, signup and login (JWT).
 
 New here? Read [CONTRIBUTING.md](CONTRIBUTING.md). Working with a coding agent? Read [agent.md](agent.md) too.
@@ -23,6 +23,9 @@ docker compose -f development/docker-compose.yml up --build -d   # Postgres 18 +
 
 Ports are overridable with `APP_PORT` and `POSTGRES_PORT` if they clash with something on your machine.
 
+The API applies database migrations itself on startup (development and test); see [Configuration](#configuration) and
+[CONTRIBUTING.md](CONTRIBUTING.md#database-migrations) for production.
+
 To run the API on the host (with auto-reload) against the compose Postgres:
 
 ```bash
@@ -36,11 +39,15 @@ Stop everything with `docker compose -f development/docker-compose.yml down` (ad
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/v1/health` | Liveness check |
+| GET | `/v1/health` | Liveness check; `data` is `{status}` |
 | POST | `/v1/auth/signup` | Create an account with `{email, password}` (password 8 to 128 characters) |
-| POST | `/v1/auth/login` | Returns a bearer JWT: `{access_token, token_type, expires_in, user_id}` |
+| POST | `/v1/auth/login` | `data` is a bearer JWT: `{access_token, token_type, expires_in, user_id}` |
 
-Every error uses one envelope: `{"message": str, "code": str, "data": any | null}`.
+Every response, success or error, uses one envelope: `{"message": str, "code": str, "data": any | null}`. On success `code` is `"ok"` and `data` is the endpoint's payload; on errors `code` is a stable error code (the HTTP status tells you which). Example signup response:
+
+```json
+{"message": "Account created", "code": "ok", "data": {"user_id": "…", "email": "me@example.com"}}
+```
 
 ```bash
 curl -X POST localhost:8010/v1/auth/signup -H 'content-type: application/json' \
@@ -64,7 +71,8 @@ variables, then `.env`, then `.env.production`. See [.env.example](.env.example)
 | `DOSEMATE_JWT_TTL_SECONDS` | `3600` | |
 | `DOSEMATE_CORS_ORIGINS` | `[]` | JSON list. |
 | `DOSEMATE_LOG_LEVEL` | `INFO` | |
-| `DOSEMATE_DB_POOL_MIN_SIZE`, `DOSEMATE_DB_POOL_MAX_SIZE` | `1`, `10` | |
+| `DOSEMATE_DB_POOL_MIN_SIZE`, `DOSEMATE_DB_POOL_MAX_SIZE` | `1`, `10` | Connection pool bounds. |
+| `DOSEMATE_RUN_MIGRATIONS_ON_STARTUP` | on, except `production` | Run `alembic upgrade head` when the app starts. In production leave it off and run the migrate command as a release step. |
 
 ## Architecture
 
@@ -77,14 +85,14 @@ transport  ->  service  ->  (service/protocols)  <-  repo  ->  storage
 app/
   main.py                 composition root: builds and wires everything, exposes `app`
   core/                   config, logger, domain errors
-  models/                 pure domain objects
-  storage/postgres/       pool, migrations, table-name constants
-  repo/                   the only layer that writes SQL; entities/ are row shapes
+  models/                 frozen pydantic domain models
+  storage/postgres/       ORM rows (the schema), engine, Alembic migrations
+  repo/                   the only layer that runs database statements
   service/                business logic; protocols.py = what services need from repos
-  transport/http/         server, routes, handlers, dto, validators, middleware, deps, error_map
+  transport/http/         server, routes, dto (request validation), middleware, deps, error_map
 tests/
-  unit/                   service tests with fake repos, validators, architecture rules
-  integration/            httpx against the real app and a real Postgres
+  unit/                   service tests with fake repos, DTO validation, architecture rules
+  integration/            httpx against the real app and a real Postgres, migration tests
 ```
 
 The rules (enforced by `tests/unit/test_architecture.py` and reviewed by humans) are listed in
@@ -97,7 +105,12 @@ uv run ruff check . && uv run ruff format --check .   # lint + format check
 uv run mypy app                                       # strict types
 uv run pytest tests/unit                              # fast, no database
 uv run pytest                                         # everything; needs Postgres on DOSEMATE_DATABASE_URL
+uv run python -m app.storage.postgres.migrate         # apply migrations (alembic upgrade head)
+uv run alembic check                                  # fails if the models and migrations drifted
 ```
+
+Schema changes: edit the ORM row, `uv run alembic revision --autogenerate -m "..." --rev-id 000N`, review the file.
+See [CONTRIBUTING.md](CONTRIBUTING.md#database-migrations).
 
 Integration tests create and drop their own throwaway database on the server in `DOSEMATE_DATABASE_URL`;
 they never touch your development data.
@@ -109,3 +122,6 @@ The multi-stage `Dockerfile` installs locked dependencies with uv and runs as a 
 ```bash
 docker build -t dosemate-backend .
 ```
+
+In production set `DOSEMATE_RUN_MIGRATIONS_ON_STARTUP=false` and run the migrations once per release, before starting
+the new version: `docker run --rm --env-file .env.production dosemate-backend python -m app.storage.postgres.migrate`.
