@@ -2,6 +2,7 @@
 
 import httpx
 from fastapi import FastAPI
+from sqlalchemy import text
 
 PASSWORD = "correct horse battery"
 
@@ -13,7 +14,7 @@ def body(email: str = "alice@example.com", password: str = PASSWORD) -> dict[str
 async def test_health(client: httpx.AsyncClient) -> None:
     resp = await client.get("/v1/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
+    assert resp.json() == {"message": "OK", "code": "ok", "data": {"status": "ok"}}
 
 
 async def test_docs_served_by_scalar(client: httpx.AsyncClient) -> None:
@@ -26,7 +27,10 @@ async def test_docs_served_by_scalar(client: httpx.AsyncClient) -> None:
 async def test_signup(client: httpx.AsyncClient) -> None:
     resp = await client.post("/v1/auth/signup", json=body("Alice@Example.com"))
     assert resp.status_code == 201
-    data = resp.json()
+    envelope = resp.json()
+    assert set(envelope) == {"message", "code", "data"}
+    assert envelope["code"] == "ok"
+    data = envelope["data"]
     assert data["email"] == "alice@example.com"
     assert data["user_id"]
     assert "password" not in data
@@ -34,7 +38,8 @@ async def test_signup(client: httpx.AsyncClient) -> None:
 
 async def test_signup_stores_only_a_hash(client: httpx.AsyncClient, app: FastAPI) -> None:
     await client.post("/v1/auth/signup", json=body())
-    stored = await app.state.db.pool.fetchval("SELECT password_hash FROM users")
+    async with app.state.engine.connect() as conn:
+        stored = (await conn.execute(text("SELECT password_hash FROM users"))).scalar_one()
     assert PASSWORD not in stored
     assert stored.startswith("pbkdf2_sha256$")
 
@@ -67,10 +72,12 @@ async def test_login(client: httpx.AsyncClient) -> None:
     signup = await client.post("/v1/auth/signup", json=body())
     resp = await client.post("/v1/auth/login", json=body())
     assert resp.status_code == 200
-    data = resp.json()
+    envelope = resp.json()
+    assert set(envelope) == {"message", "code", "data"}
+    data = envelope["data"]
     assert data["token_type"] == "bearer"
     assert data["access_token"]
-    assert data["user_id"] == signup.json()["user_id"]
+    assert data["user_id"] == signup.json()["data"]["user_id"]
 
 
 async def test_login_bad_credentials(client: httpx.AsyncClient) -> None:

@@ -1,9 +1,13 @@
-from dataclasses import dataclass
+from pydantic import BaseModel, ConfigDict
 
 
-@dataclass(frozen=True, slots=True)
-class ErrorBody:
-    """The single error envelope used by every error response (rule 6)."""
+class ErrorBody(BaseModel):
+    """The single error envelope used by every error response (rule 6).
+
+    Also the OpenAPI schema for error responses.
+    """
+
+    model_config = ConfigDict(frozen=True)
 
     message: str
     code: str

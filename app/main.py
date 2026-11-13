@@ -14,8 +14,8 @@ from app.core.logger import ConsoleLogger
 from app.repo.user import UserRepo
 from app.service.auth import AuthService
 from app.service.jwt import JWTService
-from app.storage.postgres.db import Postgres
-from app.transport.http.handlers.auth import AuthHandler
+from app.storage.postgres.engine import build_engine, build_sessionmaker
+from app.storage.postgres.migrate import migrate
 from app.transport.http.server import create_app
 
 
@@ -24,38 +24,33 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     logger = ConsoleLogger(settings.log_level)
 
     # storage + repo
-    db = Postgres(
+    engine = build_engine(
         settings.database_url,
-        logger,
         min_size=settings.db_pool_min_size,
         max_size=settings.db_pool_max_size,
     )
-    user_repo = UserRepo(db)
+    user_repo = UserRepo(build_sessionmaker(engine))
 
     # service
     secret = settings.jwt_secret.get_secret_value()
     jwt_service = JWTService(secret, settings.jwt_ttl_seconds)
     auth_service = AuthService(user_repo, jwt_service)
 
-    # transport
-    auth_handler = AuthHandler(auth_service)
-
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        await db.connect()
         try:
-            await db.run_migrations()
+            if settings.migrate_on_startup:
+                await migrate(settings.database_url, logger)
             yield
         finally:
-            await db.close()
+            await engine.dispose()
 
     app = create_app(settings, lifespan)
     app.state.settings = settings
     app.state.logger = logger
-    app.state.db = db
+    app.state.engine = engine
     app.state.jwt_service = jwt_service
     app.state.auth_service = auth_service
-    app.state.auth_handler = auth_handler
     return app
 
 

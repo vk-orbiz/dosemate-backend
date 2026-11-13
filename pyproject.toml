@@ -1,7 +1,7 @@
 [project]
 name = "dosemate-backend"
 version = "0.1.0"
-description = "DoseMate backend: FastAPI + asyncpg, layered (ports and adapters) architecture"
+description = "DoseMate backend: FastAPI + SQLAlchemy/Alembic, layered (ports and adapters) architecture"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
@@ -12,6 +12,8 @@ dependencies = [
     "pyjwt>=2.9",
     "email-validator>=2.2",
     "scalar-fastapi>=1.9.3",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "alembic>=1.14",
 ]
 
 [dependency-groups]

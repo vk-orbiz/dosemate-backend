@@ -1,26 +1,24 @@
-from dataclasses import asdict
-
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from scalar_fastapi import get_scalar_api_reference
 from starlette.exceptions import HTTPException
 
 from app.models.error import ErrorBody
-from app.transport.http.dto.common import HealthResponse
+from app.transport.http.dto.common import Envelope, HealthResponse, ok
 
 router = APIRouter(prefix="/v1", tags=["general"])
 docs_router = APIRouter(include_in_schema=False)  # registered only outside production
 
 
-@router.get("/health", response_model=HealthResponse)
-async def health() -> HealthResponse:
-    return HealthResponse(status="ok")
+@router.get("/health", response_model=Envelope[HealthResponse])
+async def health() -> Envelope[HealthResponse]:
+    return ok(HealthResponse(status="ok"))
 
 
 async def not_found_handler(request: Request, exc: HTTPException) -> JSONResponse:
     """404 fallback in the standard error envelope."""
     body = ErrorBody(message="Route not found", code="not_found")
-    return JSONResponse(status_code=404, content=asdict(body))
+    return JSONResponse(status_code=404, content=body.model_dump())
 
 
 @docs_router.get("/docs", response_class=HTMLResponse)

@@ -8,15 +8,14 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.core.errors import InvalidToken
-from app.transport.http.handlers.auth import AuthHandler
-from app.transport.http.protocols import JWTSvc
+from app.transport.http.protocols import AuthSvc, JWTSvc
 
 _bearer = HTTPBearer(auto_error=False)
 
 
-def get_auth_handler(request: Request) -> AuthHandler:
-    handler: AuthHandler = request.app.state.auth_handler
-    return handler
+def get_auth_svc(request: Request) -> AuthSvc:
+    svc: AuthSvc = request.app.state.auth_service
+    return svc
 
 
 def get_jwt_svc(request: Request) -> JWTSvc:
@@ -34,5 +33,5 @@ def get_current_user_id(
     return jwt_svc.verify(credentials.credentials)
 
 
-AuthHandlerDep = Annotated[AuthHandler, Depends(get_auth_handler)]
+AuthSvcDep = Annotated[AuthSvc, Depends(get_auth_svc)]
 CurrentUserId = Annotated[UUID, Depends(get_current_user_id)]

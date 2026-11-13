@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://dosemate:dosemate@localhost:5434/dosemate"
     db_pool_min_size: int = 1
     db_pool_max_size: int = 10
+    # None = decide by `env`: migrate on startup everywhere except production, where the
+    # separate `python -m app.storage.postgres.migrate` release step is the intended path.
+    run_migrations_on_startup: bool | None = None
 
     jwt_secret: SecretStr = SecretStr(DEV_JWT_SECRET)
     jwt_ttl_seconds: int = 3600
@@ -38,3 +41,9 @@ class Settings(BaseSettings):
         if self.env == "production" and secret == DEV_JWT_SECRET:
             raise ValueError("jwt_secret must be changed from the development default")
         return self
+
+    @property
+    def migrate_on_startup(self) -> bool:
+        if self.run_migrations_on_startup is None:
+            return self.env != "production"
+        return self.run_migrations_on_startup

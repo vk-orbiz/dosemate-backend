@@ -1,6 +1,6 @@
-# repo/ — the only place SQL lives
-Files: `<noun>.py` (`UserRepo(db)`), `entities/<noun>.py` (row shape: `from_record`, `from_model`, `to_model`).
-Pattern: copy `user.py`; use `self._db.pool`; module-level `_SQL` constants built from `tables.X`.
-Do: `$1` params only; return domain models; translate driver errors to `DomainError` (UniqueViolation -> `EmailAlreadyExists`, no row -> `XNotFound`); scope owned data by `user_id`.
-Don't: import service/transport; return `Record` or entities; interpolate user values into SQL.
+# repo/ — the only place database statements live
+Files: `<noun>.py` (`UserRepo(sessions)`). There are no entities: ORM rows live in `storage/postgres/models/`.
+Pattern: copy `user.py`; constructor takes the `async_sessionmaker`; one session per method (`self._sessions()` to read, `self._sessions.begin()` to write); `select()` + bound parameters; return `Domain.model_validate(row)`.
+Do: translate `IntegrityError` (`exc.orig.sqlstate`, `23505` = unique) and missing rows to `DomainError`s; scope owned data by `user_id`; load relationships explicitly (no lazy loading in async).
+Don't: import service/transport/asyncpg/alembic; return ORM rows; build SQL from user values; commit outside the session helpers.
 Satisfies `service/protocols.py` structurally (no inheritance).

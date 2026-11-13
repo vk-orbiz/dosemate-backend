@@ -7,12 +7,12 @@ concrete services that satisfy them structurally.
 from typing import Protocol
 from uuid import UUID
 
-from app.models.user import Credentials, Session, Signup, User
+from app.models.user import Session, User
 
 
 class AuthSvc(Protocol):
-    async def signup(self, signup: Signup) -> User: ...
-    async def login(self, credentials: Credentials) -> Session: ...
+    async def signup(self, email: str, password: str) -> User: ...
+    async def login(self, email: str, password: str) -> Session: ...
 
 
 class JWTSvc(Protocol):
