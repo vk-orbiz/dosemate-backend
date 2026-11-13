@@ -1,0 +1,12 @@
+"""DTO -> domain model conversion plus semantic validation for {{plural}}."""
+
+from app.core.errors import InvalidInput
+from app.models.{{name}} import {{Name}}Draft
+from app.transport.http.dto.{{name}} import {{Name}}Request
+
+
+def to_draft(dto: {{Name}}Request) -> {{Name}}Draft:
+    {{validation_lines}}
+    return {{Name}}Draft(
+        {{draft_kwargs}}
+    )

@@ -1,0 +1,21 @@
+"""Request/response schemas for {{plural}}."""
+
+from datetime import datetime
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class {{Name}}Request(BaseModel):
+    """Body for both create (POST) and full update (PUT)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    {{request_fields}}
+
+
+class {{Name}}Response(BaseModel):
+    id: UUID
+    {{response_fields}}
+    created_at: datetime
+    updated_at: datetime

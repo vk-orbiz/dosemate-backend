@@ -50,7 +50,7 @@ async def app(test_database_url: str) -> AsyncIterator[FastAPI]:
 
 @pytest_asyncio.fixture
 async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
-    await app.state.db.pool.execute(f"TRUNCATE {tables.USERS}")
+    await app.state.db.pool.execute(f"TRUNCATE {tables.USERS} CASCADE")
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c

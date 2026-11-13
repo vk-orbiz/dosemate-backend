@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: dosemate
+          POSTGRES_PASSWORD: dosemate
+          POSTGRES_DB: dosemate
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dosemate -d dosemate"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DOSEMATE_DATABASE_URL: postgresql://dosemate:dosemate@localhost:5432/dosemate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Lint
+        run: uv run ruff check . && uv run ruff format --check .
+      - name: Types (strict)
+        run: uv run mypy app
+      - name: Unit and integration tests
+        run: uv run pytest -q --ignore=tests/smoke
+      - name: Scaffold smoke test (generate, wire, lint, type-check, test)
+        run: uv run pytest -q tests/smoke
